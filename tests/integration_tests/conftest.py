@@ -1,14 +1,14 @@
 import pytest
 import sqlalchemy as sa
+
+from batches import config
 from batches.adapters.db_tables import metadata
 
 
 @pytest.fixture
 def session():
-    engine: sa.engine.Engine = sa.create_engine('postgresql://cosmic:example@localhost:30000/cosmic_db')
+    engine = sa.create_engine(config.get_postgres_uri())
     metadata.drop_all(engine)
     metadata.create_all(engine)
-    connection = engine.begin()
-    yield connection
-    connection.conn.close()
+    yield engine
     metadata.drop_all(engine)

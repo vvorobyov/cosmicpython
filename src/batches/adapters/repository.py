@@ -2,6 +2,8 @@ import abc
 
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.engine import RootTransaction, Connection
+
 from batches.domain import model
 
 from .db_tables import batches, order_lines, allocations
@@ -20,15 +22,19 @@ class AbstractRepository(abc.ABC):
 
 class SqlAlchemyRepository(AbstractRepository):
     def __init__(self, session):
-        self._connection = session
+        self._connection: Connection = session.connect()
+        self._root_transaction: RootTransaction = self._connection.begin()
 
-    @property
-    def _conn(self) -> sa.engine.Connection:
-        return self._connection.conn
+    def commit(self):
+        if self._root_transaction.is_active:
+            self._root_transaction.commit()
 
-    @property
-    def _trn(self) -> sa.engine.Transaction:
-        return self._connection.transaction
+    def rollback(self):
+        if self._root_transaction.is_active:
+            self._root_transaction.rollback()
+
+    def __del__(self):
+        self._connection.close()
 
     def add(self, batch: model.Batch):
         batch_id = self._get_or_create_batch(batch)
@@ -42,13 +48,13 @@ class SqlAlchemyRepository(AbstractRepository):
                  orderline_id=line_id)
             for line_id in lines_id
         ]
-        with self._conn.begin():
-            self._conn.execute(
+        with self._connection.begin():
+            self._connection.execute(
                 insert(allocations).
                 values(values).
                 on_conflict_do_nothing()
             )
-            self._conn.execute(
+            self._connection.execute(
                 sa.delete(allocations).
                 where(allocations.c.batch_id == batch_id,
                       allocations.c.orderline_id.not_in(lines_id))
@@ -67,22 +73,22 @@ class SqlAlchemyRepository(AbstractRepository):
             sa.and_(order_lines.c.orderid == line.orderid, order_lines.c.sku == line.sku)
             for line in lines
         ]
-        with self._conn.begin():
-            self._conn.execute(
+        with self._connection.begin():
+            self._connection.execute(
                 insert(order_lines).
                 values(values).
                 on_conflict_do_nothing().
                 returning(order_lines.c.id)
             )
-            cursor = self._conn.execute(
+            cursor = self._connection.execute(
                 sa.select([order_lines.c.id]).
                 where(sa.or_(*or_conditions))
             )
             return [row.id for row in cursor.all()]
 
     def _get_or_create_batch(self, batch: model.Batch):
-        with self._conn.begin():
-            cursor = self._conn.execute(
+        with self._connection.begin():
+            cursor = self._connection.execute(
                 insert(batches).values(
                     reference=batch.reference,
                     sku=batch.sku,
@@ -90,16 +96,18 @@ class SqlAlchemyRepository(AbstractRepository):
                     purchased_quantity=batch._purchased_quantity,
                 ).on_conflict_do_nothing().returning(batches.c.id)
             )
-            row = cursor.one_or_none()
-            if row:
-                return row.id
-            cursor = self._conn.execute(
-                sa.select([batches.c.id]).where(batches.c.reference == batch.reference)
-            )
-            return cursor.one().id
+        row = cursor.one_or_none()
+        if row:
+            return row.id
+
+        cursor = self._connection.execute(
+            sa.select([batches.c.id]).where(batches.c.reference == batch.reference)
+        )
+        return cursor.one().id
 
     def get(self, reference) -> model.Batch:
-        row = self._conn.execute(
+
+        row = self._connection.execute(
             batches.select(batches.c.reference == reference)
         ).one()
         batch = model.Batch(
@@ -119,6 +127,6 @@ class SqlAlchemyRepository(AbstractRepository):
         ]).select_from(
             order_lines.join(allocations)
         ).where(allocations.c.batch_id == batch_id)
-        rows = self._conn.execute(stmt).all()
+        rows = self._connection.execute(stmt).all()
         return [model.OrderLine(row.orderid, row.sku, row.qty)
                 for row in rows]
