@@ -3,9 +3,7 @@ from sqlalchemy.engine import Engine
 
 from batches.domain import model
 
-
 metadata = sa.MetaData()
-
 
 order_lines = sa.Table(
     'order_lines', metadata,
@@ -15,10 +13,10 @@ order_lines = sa.Table(
     sa.Column('orderid', sa.String(255)),
 )
 
-sa.Index('idx_unq_orderline_sku_orderid', 
-    order_lines.c.orderid,
-    order_lines.c.sku,
-    unique=True)
+sa.Index('idx_unq_orderline_sku_orderid',
+         order_lines.c.orderid,
+         order_lines.c.sku,
+         unique=True)
 
 batches = sa.Table(
     'batches', metadata,
@@ -36,7 +34,7 @@ allocations = sa.Table(
     sa.Column("batch_id", sa.ForeignKey("batches.id")),
 )
 
-sa.Index('idx_unq_allocations_batch_line', 
+sa.Index('idx_unq_allocations_batch_line',
          allocations.c.orderline_id,
          allocations.c.batch_id,
          unique=True)

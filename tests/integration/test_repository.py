@@ -1,3 +1,6 @@
+import logging
+from time import sleep
+
 from sqlalchemy.engine import RootTransaction
 
 from batches.adapters import repository
@@ -25,37 +28,32 @@ def test_repository_can_save_a_batch(session):
     batch = model.Batch("batch1", 'RUSTY-SOAPDISH', 100, eta=None)
 
     repo = repository.SqlAlchemyRepository(session)
-    repo.add(batch)
-    repo.commit()
-    conn = session.connect()
-    rows = list(conn.execute(
+    repo.save(batch)
+    session.get_transaction().commit()
+    rows = list(session.execute(
         'SELECT reference, sku, purchased_quantity, eta FROM "batches"'
     ))
-    conn.close()
     assert rows == [("batch1", 'RUSTY-SOAPDISH', 100, None)]
 
 
 def insert_order_line(session):
-    connection = session.connect()
-    transaction = connection.begin()
+    transaction = session.begin()
 
-    connection.execute(
+    session.execute(
         "INSERT INTO order_lines (orderid, sku, qty)"
         " VALUES ('order1', 'GENERIC-SOFA', 12)"
     )
-    [[orderline_id]] = transaction.connection.execute(
+    [[orderline_id]] = session.execute(
         sa.text("SELECT id FROM order_lines WHERE orderid=:orderid AND sku=:sku"),
         orderid="order1", sku="GENERIC-SOFA",
     )
     transaction.commit()
-    connection.close()
     return orderline_id
 
 
 def insert_batch(session, batch_id):
-    connection = session.connect()
-    transaction = connection.begin()
-    connection.execute(
+    transaction = session.begin()
+    session.execute(
         sa.text("INSERT INTO batches (reference, sku, purchased_quantity, eta)"
                 " VALUES (:batch_id, 'GENERIC-SOFA', 100, null)"),
         batch_id=batch_id,
@@ -65,20 +63,17 @@ def insert_batch(session, batch_id):
         batch_id=batch_id,
     )
     transaction.commit()
-    connection.close()
     return batch_id
 
 
 def insert_allocation(session, orderline_id, batch_id):
-    connection = session.connect()
-    transaction = connection.begin()
-    connection.execute(
+    transaction = session.begin()
+    session.execute(
         sa.text("INSERT INTO allocations (orderline_id, batch_id)"
                 " VALUES (:orderline_id, :batch_id)"),
         orderline_id=orderline_id, batch_id=batch_id,
     )
     transaction.commit()
-    connection.close()
 
 
 def test_repository_can_retrieve_a_batch_with_allocations(session):
@@ -102,21 +97,38 @@ def test_updating_a_batch(session):
     order1 = model.OrderLine("order1", "WEATHERED-BENCH", 10)
     order2 = model.OrderLine("order2", "WEATHERED-BENCH", 20)
     batch = model.Batch("batch1", "WEATHERED-BENCH", 100, eta=None)
+
+    repo = repository.SqlAlchemyRepository(session)
+    repo.save(batch)
+    session.get_transaction().commit()
+
     batch.allocate(order1)
+    repo.save(batch)
+    session.get_transaction().commit()
 
-    repo = repository.SqlAlchemyRepository(session)
-    repo.add(batch)
-    repo.commit()
+    assert get_allocations(session, "batch1") == {"order1"}
 
-    repo = repository.SqlAlchemyRepository(session)
     batch.allocate(order2)
-    repo.add(batch)
-    repo.commit()
+    repo.save(batch)
+    session.get_transaction().commit()
 
     assert get_allocations(session, "batch1") == {"order1", "order2"}
 
     batch.deallocate(order1)
-    repo = repository.SqlAlchemyRepository(session)
-    repo.add(batch)
-    repo.commit()
+    repo.save(batch)
+    session.get_transaction().commit()
     assert get_allocations(session, "batch1") == {"order2"}
+
+
+def test_session(session):
+    engine = session.engine
+    logger = logging.getLogger()
+    while True:
+        try:
+            sleep(1)
+            conn = engine.connect()
+            conn.exeute('select 1')
+        except Exception as err:
+            logger.error(str(err))
+        else:
+            logger.info('success')

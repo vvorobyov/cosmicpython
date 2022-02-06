@@ -55,13 +55,13 @@ class Batch:
         return self.eta > other.eta
 
 
-def allocate(line: OrderLine, batches: list[Batch]) -> str:
+def allocate(line: OrderLine, batches: list[Batch]) -> Batch:
     try:
         batch = next(
             b for b in sorted(batches) if b.can_allocate(line)
         )
         batch.allocate(line)
-        return batch.reference
+        return batch
     except StopIteration:
         raise OutOfStock(f'Артикула {line.sku} нет в наличии')
 
