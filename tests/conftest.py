@@ -6,11 +6,11 @@ from batches.adapters.db_tables import metadata
 
 
 @pytest.fixture
-def session() -> sa.engine.Connection:
+def connection():
     engine = sa.create_engine(config.get_postgres_uri())
     metadata.drop_all(engine)
     metadata.create_all(engine)
-    connection = engine.connect()
-    yield connection
-    connection.close()
+    conn = engine.connect()
+    yield conn
+    conn.close()
     metadata.drop_all(engine)
