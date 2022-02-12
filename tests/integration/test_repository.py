@@ -1,9 +1,8 @@
 import logging
 from time import sleep
 
-from sqlalchemy.engine import RootTransaction
-
 from batches.adapters import repository
+from batches.adapters.repository import start_mapper
 from batches.domain import model
 import sqlalchemy as sa
 
@@ -19,15 +18,18 @@ def get_allocations(connection, batchid):
     return {row[0] for row in rows}
 
 
-def test_repository_can_save_a_batch(connection):
+def test_repository_can_save_a_batch(session_factory):
     batch = model.Batch("batch1", 'RUSTY-SOAPDISH', 100, eta=None)
-    repo = repository.SqlAlchemyRepository(connection)
-    repo.save(batch)
-    connection.get_transaction().commit()
+    repo = repository.SqlAlchemyRepository(session_factory())
+    repo.add(batch)
+    repo.connection.get_transaction().commit()
+
+    connection = session_factory()
     rows = list(connection.execute(
         'SELECT reference, sku, purchased_quantity, eta FROM "batches"'
     ))
     assert rows == [("batch1", 'RUSTY-SOAPDISH', 100, None)]
+    connection.get_transaction().commit()
 
 
 def insert_order_line(connection):
@@ -45,38 +47,36 @@ def insert_order_line(connection):
     return orderline_id
 
 
-def insert_batch(session, batch_id):
-    transaction = session.begin()
-    session.execute(
+def insert_batch(connection, batch_id):
+    connection.execute(
         sa.text("INSERT INTO batches (reference, sku, purchased_quantity, eta)"
                 " VALUES (:batch_id, 'GENERIC-SOFA', 100, null)"),
         batch_id=batch_id,
     )
-    [[batch_id]] = transaction.connection.execute(
+    [[batch_id]] = connection.execute(
         sa.text("SELECT id FROM batches WHERE reference=:batch_id AND sku='GENERIC-SOFA'"),
         batch_id=batch_id,
     )
-    transaction.commit()
     return batch_id
 
 
-def insert_allocation(session, orderline_id, batch_id):
-    transaction = session.begin()
-    session.execute(
+def insert_allocation(connection, orderline_id, batch_id):
+    connection.execute(
         sa.text("INSERT INTO allocations (orderline_id, batch_id)"
                 " VALUES (:orderline_id, :batch_id)"),
         orderline_id=orderline_id, batch_id=batch_id,
     )
-    transaction.commit()
 
 
-def test_repository_can_retrieve_a_batch_with_allocations(connection):
+def test_repository_can_retrieve_a_batch_with_allocations(session_factory):
+    connection = session_factory()
     orderline_id = insert_order_line(connection)
     batch1_id = insert_batch(connection, "batch1")
     insert_batch(connection, "batch2")
     insert_allocation(connection, orderline_id, batch1_id)
+    connection.get_transaction().commit()
 
-    repo = repository.SqlAlchemyRepository(connection)
+    repo = repository.SqlAlchemyRepository(session_factory())
     retrieved = repo.get('batch1')
     expected = model.Batch('batch1', 'GENERIC-SOFA', 100, eta=None)
     assert retrieved == expected
@@ -85,30 +85,24 @@ def test_repository_can_retrieve_a_batch_with_allocations(connection):
     assert retrieved._allocations == {
         model.OrderLine("order1", "GENERIC-SOFA", 12)
     }
+    repo.connection.get_transaction().commit()
 
 
-def test_updating_a_batch(connection):
+def test_updating_a_batch(session_factory):
+    connection = session_factory()
     order1 = model.OrderLine("order1", "WEATHERED-BENCH", 10)
     order2 = model.OrderLine("order2", "WEATHERED-BENCH", 20)
     batch = model.Batch("batch1", "WEATHERED-BENCH", 100, eta=None)
-
     repo = repository.SqlAlchemyRepository(connection)
-    repo.save(batch)
-    connection.get_transaction().commit()
+    repo.add(batch)
 
     batch.allocate(order1)
-    repo.save(batch)
-    connection.get_transaction().commit()
-
     assert get_allocations(connection, "batch1") == {"order1"}
 
     batch.allocate(order2)
-    repo.save(batch)
-    connection.get_transaction().commit()
-
     assert get_allocations(connection, "batch1") == {"order1", "order2"}
 
     batch.deallocate(order1)
-    repo.save(batch)
-    connection.get_transaction().commit()
     assert get_allocations(connection, "batch1") == {"order2"}
+
+    connection.get_transaction().commit()

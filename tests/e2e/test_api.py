@@ -31,7 +31,7 @@ def post_to_add_batch(ref, sku, qty, eta):
     assert r.status_code == 201
 
 
-@pytest.mark.usefixtures('connection')
+@pytest.mark.usefixtures('session_factory')
 @pytest.mark.usefixtures('restart_api')
 def test_happy_path_returns_201_and_allocated_batch():
     sku, othersku = random_sku(), random_sku('other')
@@ -50,7 +50,7 @@ def test_happy_path_returns_201_and_allocated_batch():
     assert r.json()['batchref'] == earlybatch
 
 
-@pytest.mark.usefixtures('connection')
+@pytest.mark.usefixtures('session_factory')
 @pytest.mark.usefixtures('restart_api')
 def test_unhappy_path_returns_400_and_error_message():
     unknown_sku, orderid = random_sku(), random_orderid()
