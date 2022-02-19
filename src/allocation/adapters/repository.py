@@ -6,7 +6,7 @@ from sqlalchemy.dialects.postgresql import insert
 
 from allocation.domain import model
 
-from .db_tables import batches, order_lines, allocations
+from .db_tables import batches, order_lines, allocations, products
 
 
 class AbstractRepository(abc.ABC):
@@ -24,36 +24,63 @@ class AbstractRepository(abc.ABC):
         raise NotImplementedError
 
 
-class SqlAlchemyRepository(AbstractRepository):
+class AbstractProductRepository(abc.ABC):
+    @abc.abstractmethod
+    def add(self, product: model.Product):
+        pass
+
+    @abc.abstractmethod
+    def get(self, sku: str) -> model.Product:
+        pass
+
+
+class SqlAlchemyRepository(AbstractProductRepository):
 
     def __init__(self, connection: sa.engine.Connection):
         self.session = connection
 
-    def get(self, reference) -> t.Optional[model.Batch]:
-        batch = next(self.select_batches(batches.c.reference == reference), None)
-        if batch is None:
+    # def get(self, reference) -> t.Optional[model.Batch]:
+    #     batch = next(self.select_batches(batches.c.reference == reference), None)
+    #     if batch is None:
+    #         return
+    #     for _, line in self.select_lines(allocations.c.batch_id == batch.__repository_id__):
+    #         batch._allocations.add(line)
+    #     return batch
+
+    def get(self, sku: str) -> t.Optional[model.Product]:
+        if not self.check_product_exist(sku):
             return
-        for _, line in self.select_lines(allocations.c.batch_id == batch.__repository_id__):
-            batch._allocations.add(line)
-        return batch
+        product = model.Product(sku, self.get_batches(sku))
+        object.__setattr__(product, '__repository__', self)
+        return product
 
-    def list(self) -> list[model.Batch]:
-        batches_dict: dict[int, model.Batch] = {
-            batch.__repository_id__: batch
-            for batch in self.select_batches()}
-        lines = self.select_lines(allocations.c.batch_id.in_(batches_dict.keys()))
-        for batch_id, line in lines:
-            batches_dict[batch_id]._allocations.add(line)
-        return list(batches_dict.values())
-
-    def add(self, batch: model.Batch):
-        self.insert_batch(batch)
+    def add(self, product: model.Product):
+        self.insert_product(product)
 
     @property
     def is_active(self) -> bool:
         return (not self.session.closed
                 and self.session.get_transaction() is not None
                 and self.session.get_transaction().is_active)
+
+    def insert_product(self, product):
+        insert_stmt = insert(products).values({'sku': product.sku})
+        self.session.execute(insert_stmt)
+        object.__setattr__(product, '__repository__', self)
+
+    def check_product_exist(self, sku) -> bool:
+        select_stmt = sa.select([products], products.c.sku == sku)
+        result = self.session.execute(select_stmt).one_or_none()
+        return bool(result)
+
+    def get_batches(self, sku: str) -> list[model.Batch]:
+        batches_dict: dict[int, model.Batch] = {
+            batch.__repository_id__: batch
+            for batch in self.select_batches(batches.c.sku == sku)}
+        lines = self.select_lines(allocations.c.batch_id.in_(batches_dict.keys()))
+        for batch_id, line in lines:
+            batches_dict[batch_id]._allocations.add(line)
+        return list(batches_dict.values())
 
     def insert_batch(self, batch: model.Batch) -> int:
         """
@@ -164,6 +191,20 @@ def activate():
     if not hasattr(model.Batch.deallocate, '__original__'):
         model.Batch.deallocate = deallocate_wrapper(model.Batch.deallocate)
 
+    # Product decorate
+    def add_batch_wrapper(func):
+        def wrapper(product: model.Product, batch: model.Batch):
+            func(product, batch)
+            if hasattr(product, '__repository__') and batch in product._batches:
+                repository: SqlAlchemyRepository = product.__repository__
+                repository.insert_batch(batch)
+
+        wrapper.__original__ = func
+        return wrapper
+
+    if not hasattr(model.Product.add_batch, '__original__'):
+        model.Product.add_batch = add_batch_wrapper(model.Product.add_batch)
+
 
 def clear():
     # clear Batch
@@ -172,3 +213,6 @@ def clear():
 
     if hasattr(model.Batch.deallocate, '__original__'):
         model.Batch.deallocate = model.Batch.deallocate.__original__
+
+    if hasattr(model.Product.add_batch, '__original__'):
+        model.Product.add_batch = model.Product.add_batch.__original__

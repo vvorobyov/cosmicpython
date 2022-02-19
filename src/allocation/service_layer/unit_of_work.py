@@ -11,7 +11,7 @@ DEFAULT_ENGINE = create_engine(config.get_postgres_uri())
 
 
 class AbstractUnitOfWork(abc.ABC):
-    batches: repository.AbstractRepository
+    products: repository.AbstractProductRepository
 
     def __exit__(self, *args):
         self.rollback()
@@ -33,7 +33,7 @@ class SqlAlchemyUnitOfWork(AbstractUnitOfWork):
     def __enter__(self):
         self.connection: Connection = self.engine.begin().__enter__()
         self.transaction = self.connection.get_transaction()
-        self.batches = repository.SqlAlchemyRepository(self.connection)
+        self.products = repository.SqlAlchemyRepository(self.connection)
 
     def __exit__(self, *args):
         super().__exit__(*args)
@@ -43,4 +43,5 @@ class SqlAlchemyUnitOfWork(AbstractUnitOfWork):
         self.transaction.commit()
 
     def rollback(self):
-        self.transaction.rollback()
+        if self.transaction.is_active:
+            self.transaction.rollback()

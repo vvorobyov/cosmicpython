@@ -22,7 +22,7 @@ batches = sa.Table(
     'batches', metadata,
     sa.Column('id', sa.Integer, primary_key=True, autoincrement=True),
     sa.Column('reference', sa.String(255), unique=True),
-    sa.Column('sku', sa.String(255)),
+    sa.Column('sku', sa.ForeignKey("products.sku")),
     sa.Column('purchased_quantity', sa.Integer, nullable=False),
     sa.Column('eta', sa.DateTime(timezone=True)),
 )
@@ -32,5 +32,10 @@ allocations = sa.Table(
     sa.Column("id", sa.Integer, primary_key=True, autoincrement=True),
     sa.Column("orderline_id", sa.ForeignKey("order_lines.id"), unique=True),
     sa.Column("batch_id", sa.ForeignKey("batches.id")),
+)
+
+products = sa.Table(
+    "products", metadata,
+    sa.Column('sku', sa.String(255), primary_key=True)
 )
 

@@ -7,9 +7,11 @@ from allocation import config
 from allocation.domain import model
 from allocation.adapters import repository
 from allocation.service_layer import services, unit_of_work
-
+from allocation.adapters import repository
 engine = create_engine(config.get_postgres_uri())
 app = Flask(__name__)
+
+repository.activate()
 
 
 def is_valid_sku(sku, batches):

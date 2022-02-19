@@ -1,6 +1,6 @@
+import typing as t
 from dataclasses import dataclass
 from datetime import date
-from typing import Optional
 
 
 @dataclass(frozen=True)
@@ -12,7 +12,7 @@ class OrderLine:
 
 class Batch:
     def __init__(
-            self, ref: str, sku: str, qty: int, eta: Optional[date]
+            self, ref: str, sku: str, qty: int, eta: t.Optional[date]
     ):
         self.reference = ref
         self.sku = sku
@@ -55,16 +55,28 @@ class Batch:
         return self.eta > other.eta
 
 
-def allocate(line: OrderLine, batches: list[Batch]) -> Batch:
+def allocate(line: OrderLine, batches: t.Iterable[Batch]) -> str:
     try:
         batch = next(
             b for b in sorted(batches) if b.can_allocate(line)
         )
         batch.allocate(line)
-        return batch
+        return batch.reference
     except StopIteration:
         raise OutOfStock(f'Артикула {line.sku} нет в наличии')
 
 
 class OutOfStock(Exception):
     pass
+
+
+class Product:
+    def __init__(self, sku: str, batches: t.Iterable[Batch]):
+        self.sku = sku
+        self._batches = set(batches)
+
+    def allocate(self, line: OrderLine) -> str:
+        return allocate(line, self._batches)
+
+    def add_batch(self, batch: Batch):
+        self._batches.add(batch)
