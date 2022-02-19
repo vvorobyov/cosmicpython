@@ -4,8 +4,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine, Connection
 from sqlalchemy.orm import sessionmaker
 
-from batches import config
-from batches.adapters import repository
+from allocation import config
+from allocation.adapters import repository
 
 DEFAULT_ENGINE = create_engine(config.get_postgres_uri())
 

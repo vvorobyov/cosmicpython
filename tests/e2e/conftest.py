@@ -4,7 +4,7 @@ import sqlalchemy as sa
 import pytest
 import requests
 
-from batches import config
+from allocation import config
 
 
 def wait_for_webapp_to_come_up():

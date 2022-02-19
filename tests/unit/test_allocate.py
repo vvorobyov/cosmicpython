@@ -1,7 +1,7 @@
 import pytest
 
 from datetime import date, timedelta
-from batches.domain.model import Batch, OrderLine, allocate, OutOfStock
+from allocation.domain.model import Batch, OrderLine, allocate, OutOfStock
 
 
 # today = date.today()

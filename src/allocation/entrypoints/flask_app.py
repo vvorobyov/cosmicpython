@@ -3,10 +3,10 @@ from datetime import datetime
 from flask import Flask, request, jsonify
 from sqlalchemy import create_engine
 
-from batches import config
-from batches.domain import model
-from batches.adapters import repository
-from batches.service_layer import services, unit_of_work
+from allocation import config
+from allocation.domain import model
+from allocation.adapters import repository
+from allocation.service_layer import services, unit_of_work
 
 engine = create_engine(config.get_postgres_uri())
 app = Flask(__name__)

@@ -1,7 +1,7 @@
 import sqlalchemy as sa
 from sqlalchemy.engine import Engine
 
-from batches.domain import model
+from allocation.domain import model
 
 metadata = sa.MetaData()
 
@@ -19,7 +19,7 @@ sa.Index('idx_unq_orderline_sku_orderid',
          unique=True)
 
 batches = sa.Table(
-    'batches', metadata,
+    'allocation', metadata,
     sa.Column('id', sa.Integer, primary_key=True, autoincrement=True),
     sa.Column('reference', sa.String(255), unique=True),
     sa.Column('sku', sa.String(255)),
@@ -31,7 +31,7 @@ allocations = sa.Table(
     "allocations", metadata,
     sa.Column("id", sa.Integer, primary_key=True, autoincrement=True),
     sa.Column("orderline_id", sa.ForeignKey("order_lines.id")),
-    sa.Column("batch_id", sa.ForeignKey("batches.id")),
+    sa.Column("batch_id", sa.ForeignKey("allocation.id")),
 )
 
 sa.Index('idx_unq_allocations_batch_line',

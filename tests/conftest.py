@@ -1,9 +1,8 @@
 import pytest
 import sqlalchemy as sa
 
-from batches import config
-from batches.adapters.db_tables import metadata
-from batches.adapters.repository import start_mapper, clear_mapper
+from allocation import config
+from allocation.adapters.db_tables import metadata
 
 
 @pytest.fixture(name='engine')
@@ -23,6 +22,4 @@ def session_factory(engine):
 
         def __call__(self):
             return self.engine.begin().__enter__()
-    start_mapper()
     yield Session(engine)
-    clear_mapper()

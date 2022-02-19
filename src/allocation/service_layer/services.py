@@ -1,10 +1,10 @@
 import typing as t
 from datetime import date
 
-from batches.adapters.repository import AbstractRepository
-from batches.domain import model
-from batches.domain.model import OrderLine
-from batches.service_layer.unit_of_work import AbstractUnitOfWork
+from allocation.adapters.repository import AbstractRepository
+from allocation.domain import model
+from allocation.domain.model import OrderLine
+from allocation.service_layer.unit_of_work import AbstractUnitOfWork
 
 
 class InvalidSku(Exception):
@@ -20,17 +20,18 @@ def add_batch(
         uow: AbstractUnitOfWork
 ):
     with uow:
-        uow.batches.add(model.Batch(reference, sku, qty, eta))
+        uow.batches.save(model.Batch(reference, sku, qty, eta))
         uow.commit()
 
 
 def allocate(orderid: str, sku: str, qty: int,
              uow: AbstractUnitOfWork) -> str:
     with uow:
-        batches = uow.batches.list()
+        batches = uow.batches.list_batches()
         line = OrderLine(orderid, sku, qty)
         if not is_valid_sku(line.sku, batches):
             raise InvalidSku(f'Недопустимый артикул {line.sku}')
         batch = model.allocate(line, batches)
+        uow.batches.save(batch)
         uow.commit()
     return batch.reference
