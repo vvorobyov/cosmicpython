@@ -20,18 +20,18 @@ def add_batch(
         uow: AbstractUnitOfWork
 ):
     with uow:
-        uow.batches.save(model.Batch(reference, sku, qty, eta))
+        uow.batches.add(model.Batch(reference, sku, qty, eta))
         uow.commit()
 
 
 def allocate(orderid: str, sku: str, qty: int,
              uow: AbstractUnitOfWork) -> str:
     with uow:
-        batches = uow.batches.list_batches()
+        batches = uow.batches.list()
         line = OrderLine(orderid, sku, qty)
         if not is_valid_sku(line.sku, batches):
             raise InvalidSku(f'Недопустимый артикул {line.sku}')
         batch = model.allocate(line, batches)
-        uow.batches.save(batch)
+        uow.batches.add(batch)
         uow.commit()
     return batch.reference
