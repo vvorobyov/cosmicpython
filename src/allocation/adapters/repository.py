@@ -30,16 +30,16 @@ class SqlAlchemyRepository(AbstractRepository):
         self.session = connection
 
     def save(self, batch: model.Batch):
-        batch_id = self.save_batch(batch)
+        batch_id = self.insert_batch(batch)
 
-        stored = list(self.extract_lines(allocations.c.batch_id == batch_id))
+        stored = list(self.select_lines(allocations.c.batch_id == batch_id))
         added_lines = batch._allocations - {line for _, _, line in stored}  # noqa
         removed_lines = {id_ for _, id_, line in stored if line not in batch._allocations}  # noqa
-        added_ids = self.save_orderlines(added_lines)
-        self.allocate_lines(batch_id, added_ids)
-        self.deallocate_lines(batch_id, removed_lines)
+        added_ids = self.insert_orderlines(added_lines)
+        self.insert_allocations(batch_id, added_ids)
+        self.delete_allocations(batch_id, removed_lines)
 
-    def save_batch(self, batch: model.Batch) -> int:
+    def insert_batch(self, batch: model.Batch) -> int:
         """
         Метод сохранения партии, без аллокаций
         :param batch: Партия
@@ -56,7 +56,7 @@ class SqlAlchemyRepository(AbstractRepository):
             sa.select([batches.c.id]).where(batches.c.reference == batch.reference))
         return batch_id
 
-    def extract_batches(self, *condition) -> t.Iterator[tuple[int, model.Batch]]:
+    def select_batches(self, *condition) -> t.Iterator[tuple[int, model.Batch]]:
         batch_stmt = sa.select(batches)
         if condition:
             batch_stmt = batch_stmt.where(*condition)
@@ -64,7 +64,7 @@ class SqlAlchemyRepository(AbstractRepository):
         return ((row.id, model.Batch(ref=row.reference, sku=row.sku, qty=row.purchased_quantity, eta=row.eta))
                 for row in rows)
 
-    def save_orderlines(self, lines: t.Iterable[model.OrderLine]) -> t.Iterator[int]:
+    def insert_orderlines(self, lines: t.Iterable[model.OrderLine]) -> t.Iterator[int]:
         """
         Метод сохранения строк заказав
         :param lines: Строки заказов
@@ -86,7 +86,7 @@ class SqlAlchemyRepository(AbstractRepository):
         rows = self.session.execute(select_stmt)
         return (row.id for row in rows)
 
-    def deallocate_lines(self, batch_id: int, lines_ids: t.Iterable[int]):
+    def delete_allocations(self, batch_id: int, lines_ids: t.Iterable[int]):
         if not lines_ids:
             return
         delete_stmt = sa.delete(allocations).where(
@@ -95,7 +95,7 @@ class SqlAlchemyRepository(AbstractRepository):
         )
         self.session.execute(delete_stmt)
 
-    def allocate_lines(self, batch_id: int, lines_ids: t.Iterable[int]):
+    def insert_allocations(self, batch_id: int, lines_ids: t.Iterable[int]):
         if not lines_ids:
             return
         insert_stmt = insert(allocations).values([
@@ -103,7 +103,7 @@ class SqlAlchemyRepository(AbstractRepository):
         ])
         self.session.execute(insert_stmt)
 
-    def extract_lines(self, *condition) -> t.Iterator[tuple[int, int, model.OrderLine]]:
+    def select_lines(self, *condition) -> t.Iterator[tuple[int, int, model.OrderLine]]:
         """
         Метод получения строк заказа из базы
         :param condition:
@@ -121,18 +121,18 @@ class SqlAlchemyRepository(AbstractRepository):
                 for row in rows)
 
     def get_batch(self, reference) -> t.Optional[model.Batch]:
-        _, batch = next(self.extract_batches(batches.c.reference == reference), None)
+        _, batch = next(self.select_batches(batches.c.reference == reference), None)
         if batch is None:
             return
-        for batch_id, line_id, line in self.extract_lines(batches.c.reference == reference):
+        for batch_id, line_id, line in self.select_lines(batches.c.reference == reference):
             batch.allocate(line)
         return batch
 
     def list_batches(self) -> list[model.Batch]:
         batches_dict: dict[int, model.Batch] = {
             batch_id: batch
-            for batch_id, batch in self.extract_batches()}
-        lines = self.extract_lines(allocations.c.batch_id.in_(batches_dict.keys()))
+            for batch_id, batch in self.select_batches()}
+        lines = self.select_lines(allocations.c.batch_id.in_(batches_dict.keys()))
         for batch_id, line_id, line in lines:
             batches_dict[batch_id].allocate(line)
         return list(batches_dict.values())
