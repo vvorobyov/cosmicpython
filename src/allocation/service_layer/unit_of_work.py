@@ -34,6 +34,7 @@ class SqlAlchemyUnitOfWork(AbstractUnitOfWork):
         self.connection: Connection = self.engine.begin().__enter__()
         self.transaction = self.connection.get_transaction()
         self.products = repository.SqlAlchemyRepository(self.connection)
+        return self
 
     def __exit__(self, *args):
         super().__exit__(*args)

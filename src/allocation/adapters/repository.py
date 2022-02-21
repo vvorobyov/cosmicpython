@@ -2,7 +2,9 @@ import abc
 import functools
 import typing as t
 import sqlalchemy as sa
+from psycopg2.errorcodes import LOCK_NOT_AVAILABLE
 from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.exc import OperationalError
 
 from allocation.domain import model
 
@@ -32,6 +34,10 @@ class AbstractProductRepository(abc.ABC):
     @abc.abstractmethod
     def get(self, sku: str) -> model.Product:
         pass
+
+
+class ParallelAccess(Exception):
+    pass
 
 
 class SqlAlchemyRepository(AbstractProductRepository):
@@ -69,9 +75,17 @@ class SqlAlchemyRepository(AbstractProductRepository):
         object.__setattr__(product, '__repository__', self)
 
     def check_product_exist(self, sku) -> bool:
-        select_stmt = sa.select([products], products.c.sku == sku)
-        result = self.session.execute(select_stmt).one_or_none()
-        return bool(result)
+        try:
+            select_stmt = sa.select([products], products.c.sku == sku).with_for_update(nowait=True)
+            result = self.session.execute(select_stmt).one_or_none()
+            return bool(result)
+        except OperationalError as err:
+            if err.orig.pgcode != LOCK_NOT_AVAILABLE:
+                raise err
+            raise ParallelAccess('Не получилось сериализовать доступ из-за паралельного обновления')
+        except Exception as err:
+            raise err
+
 
     def get_batches(self, sku: str) -> list[model.Batch]:
         batches_dict: dict[int, model.Batch] = {
@@ -177,7 +191,6 @@ def activate():
     def deallocate_wrapper(func):
         def wrapper(batch: model.Batch, line: model.OrderLine):
             func(batch, line)
-            print(f'deallocate {line=} from {batch=}')
             if hasattr(batch, '__repository__') and line not in batch._allocations:
                 repository: SqlAlchemyRepository = batch.__repository__
                 line_id = repository.sync_orderline(line)

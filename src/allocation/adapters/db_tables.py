@@ -36,6 +36,6 @@ allocations = sa.Table(
 
 products = sa.Table(
     "products", metadata,
-    sa.Column('sku', sa.String(255), primary_key=True)
+    sa.Column('sku', sa.String(255), primary_key=True),
 )
 

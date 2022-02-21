@@ -71,12 +71,15 @@ class OutOfStock(Exception):
 
 
 class Product:
-    def __init__(self, sku: str, batches: t.Iterable[Batch]):
+    def __init__(self, sku: str, batches: t.Iterable[Batch], version_number: int = 0):
         self.sku = sku
+        self.version_number = version_number
         self._batches = set(batches)
 
     def allocate(self, line: OrderLine) -> str:
-        return allocate(line, self._batches)
+        result = allocate(line, self._batches)
+        self.version_number += 1
+        return result
 
     def add_batch(self, batch: Batch):
         self._batches.add(batch)
